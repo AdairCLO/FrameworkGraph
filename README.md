@@ -9,3 +9,9 @@ Only work in Simulator.
 
 ### Graph for "audio" related frameworks
 ![image](Example/audio.png)
+
+### Graph for "video" related frameworks
+![image](Example/video.png)
+
+### Graph for "AVFoundation" related frameworks
+![image](Example/avfoundation.png)

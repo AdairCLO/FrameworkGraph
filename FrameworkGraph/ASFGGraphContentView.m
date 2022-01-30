@@ -11,6 +11,7 @@
 #import "ASFGColor.h"
 
 #define ENABLE_DRAW_ARROW
+#define ENABLE_ADJUST_VERTICAL_LINE
 
 static const CGFloat kGraphMargin = 20;
 static const CGFloat kNodeHorizontalMargin = 60;
@@ -24,6 +25,10 @@ static const CGFloat kConnetionDashLineLen = 6;
 #ifdef ENABLE_DRAW_ARROW
 static const CGFloat kConnectionArrowLen = 10;
 static const CGFloat kConnectionArrowAngle = M_PI / 6;
+#endif
+
+#ifdef ENABLE_ADJUST_VERTICAL_LINE
+static const CGFloat kControlPointXDiff = 60;
 #endif
 
 @interface ASFGGraphContentView ()
@@ -194,10 +199,57 @@ static const CGFloat kConnectionArrowAngle = M_PI / 6;
         [path setLineDash:lengths count:2 phase:0];
     }
     
+#ifdef ENABLE_ADJUST_VERTICAL_LINE
+    BOOL isDrawLine = YES;
+    CGPoint controlPoint = CGPointZero;
+    
+    if (sourcePoint.x == targetPoint.x)
+    {
+        // "vertical line" && "no node between sourceNode and targetNode in the vertial direction" => draw curve
+
+        BOOL isDown = (targetPoint.y > sourcePoint.y);
+        CGFloat startY = (isDown ? sourcePoint.y + kNodeVerticalMargin + kNodeHeight / 2 : sourcePoint.y - kNodeVerticalMargin - kNodeHeight / 2);
+        CGFloat endY = (isDown ? targetPoint.y + kNodeHeight / 2 : targetPoint.y - kNodeHeight / 2);
+        while (startY != endY)
+        {
+            UIView *viewInPoint = [self hitTest:CGPointMake(sourcePoint.x, startY) withEvent:nil];
+            if (viewInPoint != self)
+            {
+                // there is node between sourceNode and targetNode in the vertical direction
+                isDrawLine = NO;
+                break;
+            }
+
+            if (isDown)
+            {
+                startY += (kNodeVerticalMargin + kNodeHeight);
+            }
+            else
+            {
+                startY -= (kNodeVerticalMargin + kNodeHeight);
+            }
+        }
+    }
+    
+    if (isDrawLine)
+    {
+        // draw line
+        [path moveToPoint:sourcePoint];
+        [path addLineToPoint:targetPoint];
+    }
+    else
+    {
+        // draw curve
+        [path moveToPoint:sourcePoint];
+        BOOL isLeftCurve = (sourcePoint.x <= self.center.x);
+        controlPoint = CGPointMake(sourcePoint.x + (isLeftCurve ? -kControlPointXDiff : kControlPointXDiff), sourcePoint.y + (targetPoint.y - sourcePoint.y) / 2);
+        [path addQuadCurveToPoint:targetPoint controlPoint:controlPoint];
+    }
+#else
     // draw line
     [path moveToPoint:sourcePoint];
     [path addLineToPoint:targetPoint];
-    
+#endif
     [path stroke];
     
 #ifdef ENABLE_DRAW_ARROW
@@ -211,9 +263,15 @@ static const CGFloat kConnectionArrowAngle = M_PI / 6;
     
     CGFloat arrowCoordX = sin(kConnectionArrowAngle) * kConnectionArrowLen;
     CGFloat arrowCoordY = cos(kConnectionArrowAngle) * kConnectionArrowLen;
-    CGFloat theAngle = asin((targetPoint.y - sourcePoint.y) / sqrt(pow(targetPoint.y - sourcePoint.y, 2) + pow(targetPoint.x - sourcePoint.x, 2)));
+    CGPoint refferencePoint;
+#ifdef ENABLE_ADJUST_VERTICAL_LINE
+    refferencePoint = isDrawLine ? sourcePoint : controlPoint;
+#else
+    refferencePoint = sourcePoint;
+#endif
+    CGFloat theAngle = asin((targetPoint.y - refferencePoint.y) / sqrt(pow(targetPoint.y - refferencePoint.y, 2) + pow(targetPoint.x - refferencePoint.x, 2)));
     assert(!isnan(theAngle));
-    CGFloat coordTransformAngle = (targetPoint.x < sourcePoint.x) ? (M_PI_2 - theAngle) : (theAngle - M_PI_2);
+    CGFloat coordTransformAngle = (targetPoint.x < refferencePoint.x) ? (M_PI_2 - theAngle) : (theAngle - M_PI_2);
     // rotate first, then translate
     CGAffineTransform arrowCoordTransform = CGAffineTransformConcat(CGAffineTransformMakeRotation(coordTransformAngle), CGAffineTransformMakeTranslation(targetPoint.x, targetPoint.y));
     CGPoint arrowLeftPoint = CGPointApplyAffineTransform(CGPointMake(-arrowCoordX, -arrowCoordY), arrowCoordTransform);
